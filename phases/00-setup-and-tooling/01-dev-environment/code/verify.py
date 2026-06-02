@@ -1,24 +1,57 @@
-import sys
+import importlib.util
 import shutil
-import subprocess
+import sys
+
+
+def has_module(name):
+    return importlib.util.find_spec(name) is not None
+
+
+def jupyter_detail():
+    for command in ("jupyter", "jupyter-lab", "jupyter-notebook"):
+        path = shutil.which(command)
+        if path:
+            return f"{command} at {path}"
+    return "Python package detected"
+
+
+def torch_module():
+    return __import__("torch")
+
+
+def mps_available():
+    torch = torch_module()
+    mps = getattr(torch.backends, "mps", None)
+    return bool(mps and mps.is_available())
+
+
+def accelerator_name():
+    torch = torch_module()
+    if torch.cuda.is_available():
+        return f"CUDA ({torch.cuda.get_device_name(0)})"
+    if mps_available():
+        return "Apple Metal (MPS)"
+    return "CPU only"
 
 CHECKS = [
     ("Python 3.10+", lambda: sys.version_info >= (3, 10), f"Python {sys.version}"),
-    ("NumPy", lambda: __import__("numpy"), None),
-    ("Matplotlib", lambda: __import__("matplotlib"), None),
-    ("Jupyter", lambda: __import__("jupyter"), None),
+    ("NumPy", lambda: has_module("numpy"), None),
+    ("Matplotlib", lambda: has_module("matplotlib"), None),
+    ("Jupyter", lambda: has_module("jupyter") or shutil.which("jupyter") is not None, jupyter_detail),
     ("Git", lambda: shutil.which("git") is not None, None),
     ("Node.js", lambda: shutil.which("node") is not None, None),
     ("Rust (cargo)", lambda: shutil.which("cargo") is not None, None),
 ]
 
 GPU_CHECKS = [
-    ("PyTorch", lambda: __import__("torch"), None),
+    ("PyTorch", lambda: has_module("torch"), None),
     (
         "CUDA",
-        lambda: __import__("torch").cuda.is_available(),
-        lambda: __import__("torch").cuda.get_device_name(0) if __import__("torch").cuda.is_available() else "Not available",
+        lambda: torch_module().cuda.is_available(),
+        lambda: torch_module().cuda.get_device_name(0),
     ),
+    ("Apple Metal (MPS)", mps_available, "available"),
+    ("Accelerator backend", lambda: has_module("torch"), accelerator_name),
 ]
 
 
